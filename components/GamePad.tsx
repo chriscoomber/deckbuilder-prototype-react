@@ -17,7 +17,7 @@ export default function GamePad({
           <Button
             onPress={() => onPressElement("AIR")}
             style={{
-              backgroundColor: "yellow",
+              backgroundColor: "gold",
               width: "100%",
               height: "100%",
               borderRadius: 100,

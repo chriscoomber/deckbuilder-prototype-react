@@ -8,7 +8,7 @@ function getColor(type: Element | RequiredElement): string {
     case "EARTH":
       return "green";
     case "AIR":
-      return "yellow";
+      return "gold";
     case "WATER":
       return "blue";
     case "WILD":

@@ -2,7 +2,13 @@ import { Card } from "@/screens/game";
 import { Text, View } from "react-native";
 import ElementDot from "./ElementDot";
 
-export default function CardComponent({ card }: { card: Card }) {
+export default function CardComponent({
+  card,
+  symbol,
+}: {
+  card: Card;
+  symbol?: "hand" | "discard";
+}) {
   return (
     <View
       style={{
@@ -37,9 +43,18 @@ export default function CardComponent({ card }: { card: Card }) {
         }}
       >
         {card.deckCard.requiredElements.map((element, index) => (
-          <ElementDot required={element} actual={card.spellProgress[index]} />
+          <ElementDot
+            key={index}
+            required={element}
+            actual={card.spellProgress[index]}
+          />
         ))}
       </View>
+      {symbol && (
+        <Text style={{ position: "absolute", bottom: 5, right: 5 }}>
+          {symbol === "hand" ? "✋" : symbol === "discard" ? "🗑️" : ""}
+        </Text>
+      )}
     </View>
   );
 }

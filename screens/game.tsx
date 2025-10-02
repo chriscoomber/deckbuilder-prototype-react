@@ -1,5 +1,6 @@
+import { shuffle } from "@/utils/random";
 import { Button } from "@react-navigation/elements";
-import { useReducer } from "react";
+import { useEffect, useReducer } from "react";
 import { View } from "react-native";
 import Encounter from "./encounter";
 import Shop from "./shop";
@@ -24,7 +25,11 @@ export type Card = {
   perfectSequence: boolean;
 };
 
-export type GameStateAction = { type: "INVOKE_ELEMENT"; element: Element };
+export type GameStateAction =
+  | { type: "INVOKE_ELEMENT"; element: Element }
+  | { type: "WIN_ENCOUNTER"; goldEarned: number }
+  | { type: "LOSE_ENCOUNTER" }
+  | { type: "START_NEXT_ROUND" };
 
 export type GameState = {
   round: number;
@@ -33,14 +38,16 @@ export type GameState = {
   encounterState?: {
     requiredPoints: number;
     points: number;
-    turnsLeft: number;
+    turnsRemaining: number;
     hand: Card[];
-    remainingDeck: DeckCard[];
+    drawPile: DeckCard[];
+    discardPile: DeckCard[];
     wildElements: number;
     elementOrder: Element[];
     roundEnded: boolean;
   };
   deck: DeckCard[];
+  hasLost?: boolean;
 };
 
 function gameStateReducer(origState: GameState, action: GameStateAction) {
@@ -76,6 +83,8 @@ function gameStateReducer(origState: GameState, action: GameStateAction) {
             return {
               ...card,
               spellProgress: [...card.spellProgress, action.element],
+              perfectSequence:
+                card.perfectSequence && action.element === nextElementRequired,
             };
           } else {
             return { ...card, perfectSequence: false };
@@ -93,15 +102,15 @@ function gameStateReducer(origState: GameState, action: GameStateAction) {
         }
       }
 
-      // Reduce turns left
+      // Reduce turns remaining
       state.encounterState = {
         ...state.encounterState!,
-        turnsLeft: state.encounterState!.turnsLeft - 1,
+        turnsRemaining: state.encounterState!.turnsRemaining - 1,
       };
 
       // Check if round ended
       if (
-        state.encounterState.turnsLeft <= 0 ||
+        state.encounterState.turnsRemaining <= 0 ||
         state.encounterState.points >= state.encounterState.requiredPoints
       ) {
         state.encounterState = { ...state.encounterState, roundEnded: true };
@@ -109,20 +118,57 @@ function gameStateReducer(origState: GameState, action: GameStateAction) {
         return state;
       }
 
-      // Deal out new cards
-      const remainingDeck = [...state.encounterState!.remainingDeck];
+      const drawPile = [...state.encounterState!.drawPile];
       const hand = [...state.encounterState!.hand];
-      while (hand.length < HAND_SIZE && remainingDeck.length > 0) {
-        const cardIndex = Math.floor(Math.random() * remainingDeck.length);
-        const [deckCard] = remainingDeck.splice(cardIndex, 1);
+      const discardPile = [...state.encounterState!.discardPile];
+      while (hand.length < HAND_SIZE) {
+        // Deal out new cards
+        console.log("Dealing new cards", {
+          draw: drawPile.map((c) => c.name),
+          discard: discardPile.map((c) => c.name),
+          hand: hand.map((c) => c.deckCard.name),
+        });
+        if (drawPile.length === 0) {
+          // Reshuffle discard pile into draw pile
+          drawPile.push(...shuffle(discardPile.splice(0, discardPile.length)));
+        }
+
+        const cardIndex = Math.floor(Math.random() * drawPile.length);
+        const [deckCard] = drawPile.splice(cardIndex, 1);
         hand.push({ deckCard, spellProgress: [], perfectSequence: true });
       }
       state.encounterState = {
         ...state.encounterState!,
         hand,
-        remainingDeck,
+        drawPile,
+        discardPile,
       };
 
+      return state;
+
+    case "WIN_ENCOUNTER":
+      state = {
+        ...state,
+        location: "shop",
+        gold: state.gold + action.goldEarned,
+        encounterState: undefined,
+      };
+      return state;
+
+    case "LOSE_ENCOUNTER":
+      state = {
+        ...state,
+        hasLost: true,
+      };
+      return state;
+
+    case "START_NEXT_ROUND":
+      state = {
+        ...state,
+        round: state.round + 1,
+        encounterState: generateEncounter(state.round + 1, state.deck),
+        location: "encounter",
+      };
       return state;
   }
 }
@@ -133,14 +179,21 @@ function applyCardAction(state: GameState, card: Card): GameState {
     state.encounterState!.wildElements += 1;
   }
 
-  switch (card.deckCard.action.type) {
-    case "GAIN_POINTS":
-      state.encounterState!.points += card.deckCard.action.points;
-      state.encounterState!.hand = state.encounterState!.hand.filter(
-        (c) => c !== card,
-      );
-      return state;
-  }
+  state = (() => {
+    switch (card.deckCard.action.type) {
+      case "GAIN_POINTS":
+        state.encounterState!.points += card.deckCard.action.points;
+        return state;
+    }
+  })();
+
+  // Put card into discard pile
+  state.encounterState!.hand = state.encounterState!.hand.filter(
+    (c) => c !== card,
+  );
+  state.encounterState!.discardPile.push(card.deckCard);
+
+  return state;
 }
 
 function generateStartingDeck(): DeckCard[] {
@@ -200,22 +253,34 @@ function generateStartingDeck(): DeckCard[] {
       action: { type: "GAIN_POINTS", points: 40 },
     },
     {
-      name: "SPLASH",
+      name: "Splash",
       description: "+ 1",
       requiredElements: ["WATER"],
       action: { type: "GAIN_POINTS", points: 1 },
     },
     {
-      name: "SPLASH",
+      name: "Splash",
       description: "+ 1",
       requiredElements: ["WATER"],
       action: { type: "GAIN_POINTS", points: 1 },
     },
     {
-      name: "SPLASH",
+      name: "Splash",
       description: "+ 1",
       requiredElements: ["WATER"],
       action: { type: "GAIN_POINTS", points: 1 },
+    },
+    {
+      name: "Elemental Genesis",
+      description: "+ 60",
+      requiredElements: ["FIRE", "WATER", "EARTH", "AIR"],
+      action: { type: "GAIN_POINTS", points: 60 },
+    },
+    {
+      name: "Consolidate Power",
+      description: "+ 60",
+      requiredElements: ["ANY", "ANY", "ANY", "ANY", "ANY", "ANY"],
+      action: { type: "GAIN_POINTS", points: 60 },
     },
   ];
 }
@@ -225,20 +290,21 @@ function generateEncounter(
   deck: DeckCard[],
 ): GameState["encounterState"] {
   // Deal out a hand
-  const remainingDeck = [...deck];
+  const drawPile = [...deck];
   const hand: Card[] = [];
-  while (hand.length < HAND_SIZE && remainingDeck.length > 0) {
-    const cardIndex = Math.floor(Math.random() * remainingDeck.length);
-    const [deckCard] = remainingDeck.splice(cardIndex, 1);
+  while (hand.length < HAND_SIZE && drawPile.length > 0) {
+    const cardIndex = Math.floor(Math.random() * drawPile.length);
+    const [deckCard] = drawPile.splice(cardIndex, 1);
     hand.push({ deckCard, spellProgress: [], perfectSequence: true });
   }
 
   return {
     requiredPoints: round * 100,
     points: 0,
-    turnsLeft: 20,
+    turnsRemaining: 20,
     hand,
-    remainingDeck,
+    drawPile: drawPile,
+    discardPile: [],
     elementOrder: [],
     wildElements: 0,
     roundEnded: false,
@@ -261,6 +327,14 @@ export default function Game({ onExit }: { onExit: () => void }) {
       };
     },
   );
+
+  useEffect(() => {
+    if (gameState.hasLost) {
+      {
+        onExit();
+      }
+    }
+  }, [gameState.hasLost]);
 
   return (
     <View

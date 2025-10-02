@@ -21,6 +21,7 @@ export default function CardComponent({ card }: { card: Card }) {
           justifyContent: "space-between",
           gap: 5,
           padding: 5,
+          flex: 1,
         }}
       >
         <Text>{card.deckCard.name}</Text>
